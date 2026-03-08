@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: knovie
+      POSTGRES_PASSWORD: knovie_dev
+      POSTGRES_DB: knovie
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knovie"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DB_TYPE: postgres
+      DATABASE_URL: postgresql://knovie:knovie_dev@postgres:5432/knovie
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      BILIBILI_SESSDATA: ${BILIBILI_SESSDATA:-}
+      ALLOWED_ORIGINS: "http://localhost:3000,http://frontend:3000"
+      IMAGE_CACHE_DIR: /app/cache/images
+    volumes:
+      - image_cache:/app/cache/images
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_URL: http://backend:8000
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  image_cache:

@@ -1,0 +1,79 @@
+# Project: Knovie (知频) — Video Knowledge Base
+
+## Tech Stack
+- **Frontend**: Next.js 15 (App Router, TypeScript, Tailwind CSS, shadcn/ui)
+- **AI**: Vercel AI SDK (`ai` + `@ai-sdk/google`) with Gemini 2.5 Flash
+- **Backend**: Python 3.11+ FastAPI (async) for crawling & transcription
+- **Database**: SQLite (dev) → PostgreSQL (prod), accessed via better-sqlite3 (JS) / aiosqlite (Python)
+- **Crawling**: bilibili-api-python (Bilibili), yt-dlp (YouTube)
+- **Transcription**: subtitle-first → Groq Whisper API → Qwen-ASR → local faster-whisper
+
+## Project Structure
+```
+knovie/
+├── app/                        # Next.js App Router pages
+│   ├── api/chat/route.ts       # Vercel AI SDK streaming chat
+│   ├── api/topics/route.ts     # Topic CRUD
+│   ├── api/videos/route.ts     # Video list/search
+│   ├── api/collect/route.ts    # Proxy to Python backend
+│   ├── chat/page.tsx
+│   ├── explore/page.tsx
+│   ├── collect/page.tsx
+│   ├── layout.tsx
+│   └── page.tsx                # Dashboard
+├── components/
+│   ├── chat/                   # Chat UI components
+│   ├── explorer/               # Video/Creator browsing
+│   ├── collector/              # Crawl control panel
+│   └── ui/                     # shadcn/ui base components
+├── lib/
+│   ├── db.ts                   # Database access layer
+│   ├── ai.ts                   # Gemini agent config + tools
+│   ├── types.ts                # Shared TypeScript types
+│   └── utils.ts                # Helpers
+├── backend/                    # Python FastAPI service
+│   ├── main.py                 # FastAPI entry
+│   ├── routers/                # API route modules
+│   ├── lib/                    # scraper, db, transcriber
+│   ├── handlers/               # bilibili_handler, youtube_handler
+│   ├── services/               # ASR services
+│   └── requirements.txt
+└── .env.local
+```
+
+## Code Conventions
+
+### TypeScript / Next.js
+- Use functional components with hooks, never class components
+- Use `"use client"` directive only when needed (hooks, event handlers, browser APIs)
+- Prefer Server Components by default
+- Use Vercel AI SDK `useChat` for chat interfaces, never raw fetch for streaming
+- Use `zod` for all schema validation (API params, tool params)
+- File naming: kebab-case for files, PascalCase for components
+- Always define types in `lib/types.ts`, import from there
+- Use `@/` path alias for imports
+
+### Python / FastAPI
+- Use async/await for all I/O operations
+- Use Pydantic v2 models for request/response schemas
+- Use dependency injection for database sessions
+- Error handling: never let exceptions crash the server, always return structured errors
+- Logging: use `loguru` or structured logging, never bare `print()`
+
+### Database
+- All DB operations go through a DAO/repository layer, never raw SQL in route handlers
+- Use parameterized queries, never string interpolation
+- Keep SQLite for dev, design schema to be Postgres-compatible (no SQLite-only features except FTS5)
+
+### UI / Styling
+- Use shadcn/ui components as base, customize with Tailwind
+- Dark mode support from day 1 (use CSS variables)
+- Responsive: mobile-first
+- Loading states for all async operations
+- Toast notifications for errors and success via sonner
+
+### AI / Chat
+- System prompt includes topic context + available knowledge summary
+- Tools must return JSON-serializable results
+- maxSteps: 5 for multi-tool agent loops
+- Always show tool call status in chat UI (searching, fetching, etc.)

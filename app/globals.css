@@ -1,0 +1,132 @@
+@import url("https://cdn.jsdelivr.net/npm/misans-vf@1.0.0/lib/MiSans.min.css");
+@import "tailwindcss";
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-positive: #22a06b;
+  --color-negative: #e34935;
+  --color-sidebar-background: var(--sidebar-background);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: "MiSans", "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  :root {
+    --background: #fcfcf9;
+    --foreground: #1a1a1a;
+    --card: #ffffff;
+    --card-foreground: #1a1a1a;
+    --popover: #ffffff;
+    --popover-foreground: #1a1a1a;
+    --primary: #141413;
+    --primary-foreground: #ffffff;
+    --secondary: #f3f3f0;
+    --secondary-foreground: #555555;
+    --muted: #f3f3f0;
+    --muted-foreground: #888888;
+    --accent: #f3f3f0;
+    --accent-foreground: #1a1a1a;
+    --destructive: #e34935;
+    --destructive-foreground: #ffffff;
+    --border: #ebebea;
+    --input: #ebebea;
+    --ring: #141413;
+    --radius: 0.5rem;
+    --sidebar-background: #fcfcf9;
+    --sidebar-foreground: #1a1a1a;
+    --sidebar-primary: #141413;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #f0f0ed;
+    --sidebar-accent-foreground: #1a1a1a;
+    --sidebar-border: #ebebea;
+    --sidebar-ring: #141413;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* ── Liquid Glass (WWDC 2025) ── */
+
+.liquid-glass {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  box-shadow: 0 6px 6px rgba(0, 0, 0, 0.12), 0 0 20px rgba(0, 0, 0, 0.06);
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 2.2);
+}
+
+.liquid-glass:hover {
+  box-shadow: 0 8px 10px rgba(0, 0, 0, 0.14), 0 0 24px rgba(0, 0, 0, 0.07);
+}
+
+.liquid-glass-effect {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  backdrop-filter: blur(3px);
+  filter: url(#glass-distortion);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.liquid-glass-tint {
+  z-index: 1;
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.liquid-glass-shine {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  box-shadow:
+    inset 2px 2px 1px 0 rgba(255, 255, 255, 0.5),
+    inset -1px -1px 1px 1px rgba(255, 255, 255, 0.5);
+}
+
+.liquid-glass-content {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+}
+
+.dashboard-bg {
+  background: transparent;
+}

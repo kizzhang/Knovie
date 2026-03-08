@@ -1,0 +1,158 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+
+from fastapi import APIRouter, Query
+from fastapi.responses import FileResponse, Response
+from loguru import logger
+import httpx
+
+router = APIRouter()
+
+CACHE_DIR = Path(os.getenv("IMAGE_CACHE_DIR", str(Path(__file__).resolve().parents[1] / "cache" / "images")))
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+_FETCH_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Referer": "https://www.bilibili.com",
+}
+
+_EXT_MAP = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/avif": ".avif",
+    "image/svg+xml": ".svg",
+}
+
+
+def _cache_key(url: str) -> str:
+    return hashlib.md5(url.encode()).hexdigest()
+
+
+def _get_cached_path(key: str) -> Path | None:
+    """Return the cached file path if it exists, or None."""
+    for ext in _EXT_MAP.values():
+        p = CACHE_DIR / f"{key}{ext}"
+        if p.exists():
+            return p
+    return None
+
+
+def _meta_path(key: str) -> Path:
+    return CACHE_DIR / f"{key}.meta"
+
+
+def _read_meta(key: str) -> dict | None:
+    mp = _meta_path(key)
+    if mp.exists():
+        try:
+            return json.loads(mp.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+    return None
+
+
+async def ensure_cached(url: str) -> Path | None:
+    """Download and cache an image if not already cached. Returns local path or None on failure."""
+    if not url:
+        return None
+
+    key = _cache_key(url)
+    cached = _get_cached_path(key)
+    if cached:
+        return cached
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+            resp = await client.get(url, headers=_FETCH_HEADERS)
+            resp.raise_for_status()
+    except Exception as e:
+        logger.debug(f"Image fetch failed for {url[:80]}: {e}")
+        return None
+
+    content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
+    ext = _EXT_MAP.get(content_type, ".jpg")
+    file_path = CACHE_DIR / f"{key}{ext}"
+
+    try:
+        file_path.write_bytes(resp.content)
+        _meta_path(key).write_text(
+            json.dumps({"url": url, "content_type": content_type, "size": len(resp.content)}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        logger.warning(f"Failed to write cache file {file_path}: {e}")
+        return None
+
+    return file_path
+
+
+async def precache_images(urls: list[str]) -> int:
+    """Batch pre-cache a list of image URLs. Returns count of newly cached images."""
+    cached = 0
+    for url in urls:
+        if not url:
+            continue
+        key = _cache_key(url)
+        if _get_cached_path(key):
+            continue
+        result = await ensure_cached(url)
+        if result:
+            cached += 1
+    return cached
+
+
+@router.get("/proxy-image")
+async def proxy_image(url: str = Query(..., description="Image URL to proxy")):
+    key = _cache_key(url)
+    cached = _get_cached_path(key)
+
+    if cached:
+        meta = _read_meta(key)
+        media_type = meta["content_type"] if meta else "image/jpeg"
+        return FileResponse(
+            cached,
+            media_type=media_type,
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
+    path = await ensure_cached(url)
+    if not path:
+        return Response(status_code=404)
+
+    meta = _read_meta(key)
+    media_type = meta["content_type"] if meta else "image/jpeg"
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+@router.get("/cache/stats")
+async def cache_stats():
+    """Return image cache statistics."""
+    files = [f for f in CACHE_DIR.iterdir() if f.is_file() and not f.suffix == ".meta"]
+    total_size = sum(f.stat().st_size for f in files)
+    return {
+        "fileCount": len(files),
+        "totalSizeBytes": total_size,
+        "totalSizeMB": round(total_size / (1024 * 1024), 2),
+        "cacheDir": str(CACHE_DIR),
+    }
+
+
+@router.delete("/cache/clear")
+async def cache_clear():
+    """Clear all cached images."""
+    count = 0
+    for f in CACHE_DIR.iterdir():
+        if f.is_file():
+            f.unlink()
+            count += 1
+    return {"ok": True, "deletedFiles": count}

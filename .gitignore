@@ -68,3 +68,7 @@ backend/cache/
 
 # playwright mcp logs
 .playwright-mcp/
+
+# cursor IDE
+.cursorrules
+.cursor/

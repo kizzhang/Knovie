@@ -32,7 +32,7 @@
 ## Features
 
 - **Topic-based collection** — Enter a keyword, auto-collect videos from Bilibili / YouTube
-- **Smart transcription** — Extracts platform subtitles first, falls back to Groq Whisper AI
+- **Smart transcription** — youtube-transcript-api → yt-dlp subtitles → Groq Whisper → Gemini, multi-layer fallback
 - **AI Q&A** — Chat with your knowledge base powered by Google Gemini, with source citations
 - **Full-text search** — Search through all transcribed content instantly
 - **Import by link** — Import individual videos or entire creator channels by URL
@@ -46,7 +46,7 @@
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS · shadcn/ui |
-| AI | Vercel AI SDK · Google Gemini 2.5 Flash · Groq Whisper |
+| AI | Vercel AI SDK · Google Gemini 2.5 Flash · Groq Whisper · youtube-transcript-api |
 | Backend | Python FastAPI (async) · Pydantic v2 |
 | Database | SQLite (dev) / PostgreSQL (prod) |
 | Search | SQLite FTS5 / PostgreSQL tsvector + GIN |
@@ -84,7 +84,7 @@ cp .env.example .env.local
 | Variable | Description | How to get |
 |----------|-------------|------------|
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini AI model | [Google AI Studio](https://aistudio.google.com/apikey) (free) |
-| `GROQ_API_KEY` | Speech transcription | [Groq Console](https://console.groq.com) (free) |
+| `GROQ_API_KEY` | Speech transcription (fallback) | [Groq Console](https://console.groq.com) (free) |
 
 **Optional:**
 
@@ -186,7 +186,7 @@ knovie/
 ### 核心功能
 
 - **主题采集** — 输入关键词，自动从 B站 / YouTube 搜索并采集视频，支持配置采集规模
-- **智能转录** — 优先提取平台字幕（零成本），无字幕时调用 Groq Whisper AI 语音识别
+- **智能转录** — youtube-transcript-api → yt-dlp 字幕 → Groq Whisper → Gemini 直传，四级自动降级
 - **AI 问答** — 基于知识库内容的 AI 对话（Google Gemini），回答带来源引用
 - **全文搜索** — 搜索全部转录内容，按平台和转录状态筛选
 - **链接导入** — 通过视频或创作者链接直接导入
@@ -232,7 +232,7 @@ docker compose up -d
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `GOOGLE_GENERATIVE_AI_API_KEY` | — | Gemini API Key（必填）[获取](https://aistudio.google.com/apikey) |
-| `GROQ_API_KEY` | — | 语音转录（必填）[获取](https://console.groq.com) |
+| `GROQ_API_KEY` | — | 语音转录后备（推荐）[获取](https://console.groq.com) |
 | `BACKEND_URL` | `http://localhost:8000` | 后端地址 |
 | `DB_TYPE` | `sqlite` | `sqlite`（开发）/ `postgres`（生产） |
 | `DATABASE_URL` | — | PostgreSQL 连接串 |
@@ -240,6 +240,7 @@ docker compose up -d
 | `SERPER_API_KEY` | — | 联网搜索（可选）[获取](https://serper.dev) |
 | `ALLOWED_ORIGINS` | `localhost:3000,...` | CORS 允许的域名 |
 | `RATE_LIMIT_ENABLED` | `false` | 启用 IP 速率限制 |
+| `SETTINGS_UI_ENABLED` | `false` | 启用 Web 设置界面（仅限本地开发） |
 | `IMAGE_CACHE_DIR` | `backend/cache/images` | 图片缓存目录 |
 | `SUBTITLE_CACHE_DIR` | `backend/cache/subtitles` | 原始字幕缓存目录 |
 | `AUDIO_CACHE_DIR` | `backend/cache/audio` | 原始音频缓存目录 |

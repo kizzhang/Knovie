@@ -131,7 +131,17 @@ def _yt_search_sync(query: str, max_results: int) -> list[dict]:
 
 
 async def get_youtube_subtitle(video_id: str) -> list[dict] | None:
-    """Try to get existing subtitles for a YouTube video via yt-dlp."""
+    """Get YouTube subtitles with fallback chain:
+    1. youtube-transcript-api (fast, pure Python)
+    2. yt-dlp --write-subs (subprocess, fallback when #1 is IP-blocked)
+    """
+    from services.youtube_transcript_service import fetch_transcript
+
+    segments = await fetch_transcript(video_id)
+    if segments:
+        return segments
+
+    logger.info(f"[youtube subtitle] transcript-api miss, falling back to yt-dlp for {video_id}")
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(_executor, _get_subtitle_sync, video_id)
 

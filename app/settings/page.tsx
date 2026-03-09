@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Settings,
   CheckCircle2,
@@ -8,6 +8,9 @@ import {
   RefreshCw,
   Loader2,
   ExternalLink,
+  Eye,
+  EyeOff,
+  Save,
 } from "lucide-react";
 import { GlassDistortionSVG, LiquidGlassCard } from "@/components/ui/liquid-glass";
 
@@ -22,74 +25,143 @@ interface HealthResult {
   checks: Record<string, HealthCheck>;
 }
 
-const SETUP_GUIDES: Record<string, { steps: string; url?: string; linkLabel?: string; note?: string }> = {
-  gemini: {
-    steps: "在 .env.local 中填写 GOOGLE_GENERATIVE_AI_API_KEY，用于 AI 问答功能。",
-    url: "https://aistudio.google.com/apikey",
-    linkLabel: "前往 Google AI Studio 获取 API Key",
-    note: "免费额度即可使用，无需绑卡。",
-  },
-  groq: {
-    steps: "在 .env.local 中填写 GROQ_API_KEY，用于语音转录（Whisper）。未配置时将使用平台自带字幕。",
-    url: "https://console.groq.com/keys",
-    linkLabel: "前往 Groq Console 获取 API Key",
-    note: "免费层级每天可转录约 2 小时音频。",
-  },
-  serper: {
-    steps: "在 .env.local 中填写 SERPER_API_KEY，让 AI 能搜索互联网获取最新信息。",
-    url: "https://serper.dev/signup",
-    linkLabel: "前往 Serper 注册获取 API Key",
-    note: "注册即送 2500 次免费搜索额度。",
-  },
-  ytdlp: {
-    steps: "需要在服务器上安装视频下载工具，用于下载视频音频进行转录。",
-    url: "https://github.com/yt-dlp/yt-dlp#installation",
-    linkLabel: "查看安装方法",
-    note: "推荐使用 pip install yt-dlp 安装。",
-  },
-  bilibili: {
-    steps: "需安装 Python 采集模块。如需完整功能，在 .env.local 中填写 BILIBILI_SESSDATA（Cookie）。",
-    url: "https://www.bilibili.com",
-    linkLabel: "如何获取 SESSDATA",
-    note: "浏览器登录 B站 → F12 打开开发者工具 → Application → Cookies → 复制 SESSDATA 的值。",
-  },
-  db: {
-    steps: "数据库连接异常，请检查后端服务是否正常启动。",
-  },
-  backend: {
-    steps: "后端服务未启动或端口不正确，请在终端运行 backend 启动命令。",
-  },
-};
+interface SettingItem {
+  key: string;
+  label: string;
+  description: string;
+  link?: string;
+  linkLabel?: string;
+  secret: boolean;
+  required: boolean;
+  default?: string;
+  group: string;
+  value: string;
+  isSet: boolean;
+}
 
 export default function SettingsPage() {
   const [health, setHealth] = useState<HealthResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [healthError, setHealthError] = useState<string | null>(null);
 
-  const fetchHealth = async () => {
-    setLoading(true);
-    setError(null);
+  const [settings, setSettings] = useState<SettingItem[]>([]);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsDisabled, setSettingsDisabled] = useState(false);
+  const [editValues, setEditValues] = useState<Record<string, string>>({});
+  const [visibleSecrets, setVisibleSecrets] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  const fetchHealth = useCallback(async () => {
+    setHealthLoading(true);
+    setHealthError(null);
     try {
       const res = await fetch("/api/health");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setHealth(await res.json());
     } catch (e) {
-      setError(e instanceof Error ? e.message : "连接失败");
+      setHealthError(e instanceof Error ? e.message : "连接失败");
       setHealth(null);
     } finally {
-      setLoading(false);
+      setHealthLoading(false);
     }
-  };
+  }, []);
+
+  const fetchSettings = useCallback(async () => {
+    setSettingsLoading(true);
+    try {
+      const res = await fetch("/api/settings");
+      if (res.status === 403) {
+        setSettingsDisabled(true);
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setSettings(data.items);
+      const vals: Record<string, string> = {};
+      for (const item of data.items) {
+        vals[item.key] = item.value;
+      }
+      setEditValues(vals);
+      setDirty(false);
+    } catch {
+      // settings API might not be available
+    } finally {
+      setSettingsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchHealth();
-  }, []);
+    fetchSettings();
+  }, [fetchHealth, fetchSettings]);
+
+  const handleChange = (key: string, value: string) => {
+    setEditValues((prev) => ({ ...prev, [key]: value }));
+    setDirty(true);
+    setSaveMsg(null);
+  };
+
+  const toggleSecret = (key: string) => {
+    setVisibleSecrets((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const payload: Record<string, string> = {};
+      for (const item of settings) {
+        const newVal = editValues[item.key] ?? "";
+        if (newVal !== item.value) {
+          payload[item.key] = newVal;
+        }
+      }
+
+      if (Object.keys(payload).length === 0) {
+        setSaveMsg("没有需要保存的更改");
+        setSaving(false);
+        return;
+      }
+
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: payload }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setSaveMsg(`已保存 ${data.updated.length} 项配置，重启后端服务后生效`);
+      setDirty(false);
+      await fetchSettings();
+      await fetchHealth();
+    } catch (e) {
+      setSaveMsg(`保存失败：${e instanceof Error ? e.message : "未知错误"}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const checks = health?.checks ? Object.entries(health.checks) : [];
 
+  const groups = settings.reduce<Record<string, SettingItem[]>>((acc, item) => {
+    if (!acc[item.group]) acc[item.group] = [];
+    acc[item.group].push(item);
+    return acc;
+  }, {});
+
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-5">
+    <div className="p-6 max-w-2xl mx-auto space-y-6">
       <GlassDistortionSVG />
+
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <Settings className="size-[18px] text-foreground/60" strokeWidth={1.5} />
@@ -97,112 +169,201 @@ export default function SettingsPage() {
             className="text-foreground"
             style={{ fontSize: "18px", fontWeight: 500, letterSpacing: "-0.4px", lineHeight: "28px" }}
           >
-            设置与自检
+            设置
           </h2>
         </div>
-        <button
-          onClick={fetchHealth}
-          disabled={loading}
-          className="flex items-center gap-1 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1 text-[12px] font-[450] text-foreground/70 transition-colors hover:bg-white/80 disabled:opacity-50"
-        >
-          <RefreshCw className={`size-3 ${loading ? "animate-spin" : ""}`} strokeWidth={1.5} />
-          重新检测
-        </button>
       </div>
 
-      {error && (
+      {/* Settings Form */}
+      {settingsLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="size-5 animate-spin text-[#aaa]" />
+        </div>
+      ) : settingsDisabled ? (
         <LiquidGlassCard className="p-4">
-          <div className="flex items-center gap-2 text-destructive">
-            <AlertCircle className="size-4" strokeWidth={1.5} />
-            <div>
-              <p className="text-[14px] font-medium">无法连接后端服务</p>
-              <p className="text-[12px] text-destructive/70 mt-0.5">
-                请确认后端服务已启动并运行在正确的端口。错误：{error}
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="size-4 text-foreground/40 shrink-0 mt-0.5" strokeWidth={1.5} />
+            <div className="space-y-1">
+              <p className="text-[13px] font-medium text-foreground/70">配置编辑未启用</p>
+              <p className="text-[11px] text-[#999] leading-relaxed">
+                出于安全考虑，在线配置编辑默认关闭。本地开发时，在环境变量中设置{" "}
+                <code className="px-1 py-0.5 bg-foreground/5 rounded text-[10px] font-mono">SETTINGS_UI_ENABLED=true</code>{" "}
+                即可启用。生产环境请通过部署平台（Vercel / Railway）的环境变量面板管理配置。
               </p>
             </div>
           </div>
         </LiquidGlassCard>
-      )}
-
-      {loading && !health && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="size-5 animate-spin text-[#aaa]" />
-        </div>
-      )}
-
-      {health && (
+      ) : settings.length > 0 ? (
         <>
-          <LiquidGlassCard className="p-4">
-            <div className="flex items-center gap-2 mb-1">
-              {health.ok ? (
-                <CheckCircle2 className="size-4 text-positive" strokeWidth={1.5} />
-              ) : (
-                <AlertCircle className="size-4 text-amber-500" strokeWidth={1.5} />
-              )}
-              <span className="text-[14px] font-medium text-foreground">
-                {health.ok ? "所有服务正常" : "部分服务需要配置"}
-              </span>
+          {Object.entries(groups).map(([group, items]) => (
+            <div key={group} className="space-y-2">
+              <h3 className="text-[13px] font-medium text-foreground/60 px-0.5">{group}</h3>
+              {items.map((item) => {
+                const val = editValues[item.key] ?? "";
+                const isMasked = item.secret && item.isSet && val.includes("*");
+                return (
+                  <LiquidGlassCard key={item.key} className="p-3.5">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-medium text-foreground">{item.label}</span>
+                        {item.required && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-500">必填</span>
+                        )}
+                        {item.isSet && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-positive/10 text-positive">已配置</span>
+                        )}
+                        {!item.isSet && !item.required && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-foreground/5 text-foreground/40">可选</span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[#999] leading-relaxed">{item.description}</p>
+                      <div className="flex items-center gap-1.5">
+                        <div className="relative flex-1">
+                          <input
+                            type={item.secret && !visibleSecrets.has(item.key) ? "password" : "text"}
+                            value={val}
+                            onChange={(e) => handleChange(item.key, e.target.value)}
+                            placeholder={item.default || `输入 ${item.label}...`}
+                            className="w-full rounded-lg border border-black/10 bg-white/60 px-3 py-1.5 text-[12px] text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/30 font-mono"
+                          />
+                          {isMasked && (
+                            <span className="absolute right-8 top-1/2 -translate-y-1/2 text-[10px] text-foreground/30">
+                              输入新值覆盖
+                            </span>
+                          )}
+                        </div>
+                        {item.secret && (
+                          <button
+                            onClick={() => toggleSecret(item.key)}
+                            className="shrink-0 rounded-lg border border-black/10 bg-white/60 p-1.5 text-foreground/40 hover:text-foreground/70 transition-colors"
+                          >
+                            {visibleSecrets.has(item.key) ? (
+                              <EyeOff className="size-3.5" strokeWidth={1.5} />
+                            ) : (
+                              <Eye className="size-3.5" strokeWidth={1.5} />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                      {item.link && (
+                        <a
+                          href={item.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                        >
+                          {item.linkLabel || "获取"}
+                          <ExternalLink className="size-2.5" strokeWidth={1.5} />
+                        </a>
+                      )}
+                    </div>
+                  </LiquidGlassCard>
+                );
+              })}
             </div>
-            <p className="text-[12px] text-[#999] ml-6">
-              {health.ok
-                ? "系统已准备就绪，可以正常使用所有功能。"
-                : "部分功能可能受限，请查看下方详情并按指引配置。"
-              }
-            </p>
-          </LiquidGlassCard>
+          ))}
 
-          <div className="space-y-2">
-            {checks.map(([key, check]) => {
-              const guide = SETUP_GUIDES[key];
-              return (
-                <LiquidGlassCard key={key} className="p-3.5">
-                  <div className="flex items-start gap-2.5">
+          {/* Save button */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-[13px] font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {saving ? (
+                <Loader2 className="size-3.5 animate-spin" strokeWidth={1.5} />
+              ) : (
+                <Save className="size-3.5" strokeWidth={1.5} />
+              )}
+              保存配置
+            </button>
+            {saveMsg && (
+              <span className={`text-[12px] ${saveMsg.includes("失败") ? "text-red-500" : "text-positive"}`}>
+                {saveMsg}
+              </span>
+            )}
+          </div>
+        </>
+      ) : null}
+
+      {/* Health Check Section */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-[13px] font-medium text-foreground/60">系统自检</h3>
+          <button
+            onClick={fetchHealth}
+            disabled={healthLoading}
+            className="flex items-center gap-1 rounded-lg border border-black/10 bg-white/60 px-2.5 py-1 text-[12px] font-[450] text-foreground/70 transition-colors hover:bg-white/80 disabled:opacity-50"
+          >
+            <RefreshCw className={`size-3 ${healthLoading ? "animate-spin" : ""}`} strokeWidth={1.5} />
+            重新检测
+          </button>
+        </div>
+
+        {healthError && (
+          <LiquidGlassCard className="p-4">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="size-4" strokeWidth={1.5} />
+              <div>
+                <p className="text-[14px] font-medium">无法连接后端服务</p>
+                <p className="text-[12px] text-destructive/70 mt-0.5">
+                  请确认后端服务已启动并运行在正确的端口。错误：{healthError}
+                </p>
+              </div>
+            </div>
+          </LiquidGlassCard>
+        )}
+
+        {healthLoading && !health && (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="size-5 animate-spin text-[#aaa]" />
+          </div>
+        )}
+
+        {health && (
+          <>
+            <LiquidGlassCard className="p-3.5">
+              <div className="flex items-center gap-2">
+                {health.ok ? (
+                  <CheckCircle2 className="size-4 text-positive" strokeWidth={1.5} />
+                ) : (
+                  <AlertCircle className="size-4 text-amber-500" strokeWidth={1.5} />
+                )}
+                <span className="text-[13px] font-medium text-foreground">
+                  {health.ok ? "所有服务正常" : "部分服务需要配置"}
+                </span>
+              </div>
+            </LiquidGlassCard>
+
+            <div className="space-y-1.5">
+              {checks.map(([key, check]) => (
+                <LiquidGlassCard key={key} className="px-3.5 py-2.5">
+                  <div className="flex items-center gap-2.5">
                     {check.ok ? (
-                      <CheckCircle2 className="size-4 text-positive shrink-0 mt-0.5" strokeWidth={1.5} />
+                      <CheckCircle2 className="size-3.5 text-positive shrink-0" strokeWidth={1.5} />
                     ) : (
-                      <AlertCircle className="size-4 text-amber-500 shrink-0 mt-0.5" strokeWidth={1.5} />
+                      <AlertCircle className="size-3.5 text-amber-500 shrink-0" strokeWidth={1.5} />
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-[13px] font-medium text-foreground">{check.label}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
-                          check.ok
-                            ? "bg-positive/10 text-positive"
-                            : "bg-amber-500/10 text-amber-600"
-                        }`}>
+                        <span className="text-[12px] font-medium text-foreground">{check.label}</span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded ${
+                            check.ok ? "bg-positive/10 text-positive" : "bg-amber-500/10 text-amber-600"
+                          }`}
+                        >
                           {check.ok ? "正常" : "待配置"}
                         </span>
                       </div>
-                      {check.hint && (
-                        <p className="text-[11px] text-[#999] mt-0.5">{check.hint}</p>
-                      )}
-                      {!check.ok && guide && (
-                        <div className="mt-1.5 text-[11px] text-[#777] leading-relaxed space-y-1">
-                          <p>{guide.steps}</p>
-                          {guide.url && (
-                            <a
-                              href={guide.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-primary hover:underline"
-                            >
-                              {guide.linkLabel}
-                              <ExternalLink className="size-2.5" strokeWidth={1.5} />
-                            </a>
-                          )}
-                          {guide.note && (
-                            <p className="text-[10px] text-[#aaa]">{guide.note}</p>
-                          )}
-                        </div>
-                      )}
+                      {check.hint && <p className="text-[10px] text-[#999] mt-0.5 truncate">{check.hint}</p>}
                     </div>
                   </div>
                 </LiquidGlassCard>
-              );
-            })}
-          </div>
-        </>
-      )}
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

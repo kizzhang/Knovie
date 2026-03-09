@@ -55,6 +55,10 @@ const nextConfig: NextConfig = {
         destination: `${BACKEND_URL}/api/health`,
       },
       {
+        source: "/api/settings",
+        destination: `${BACKEND_URL}/api/settings`,
+      },
+      {
         source: "/api/tasks",
         destination: `${BACKEND_URL}/api/tasks`,
       },

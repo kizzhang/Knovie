@@ -74,9 +74,12 @@ async def transcribe_topic_videos(topic_id: str, task_id: str) -> None:
 
 async def _transcribe_single(video: dict) -> list[dict] | None:
     """Try to transcribe a single video using the fallback chain:
-    1. Platform subtitles (free, fastest)
-    2. Groq Whisper API (yt-dlp download + Groq, fast)
-    3. Gemini direct transcription (YouTube only, slower but no yt-dlp needed)
+    1. Platform subtitles
+       - youtube-transcript-api (fast, pure Python)
+       - yt-dlp --write-subs (fallback when transcript-api is blocked)
+       - Bilibili native subtitles
+    2. Groq Whisper API (yt-dlp audio download + Groq, fast)
+    3. Gemini direct transcription (YouTube only, slower but no download needed)
     4. Skip
     """
     vid = video["platformVideoId"]

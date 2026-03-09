@@ -35,17 +35,6 @@ async def health_check():
         "hint": "前端环境变量 GOOGLE_GENERATIVE_AI_API_KEY",
     }
 
-    transcribe_methods = []
-    if GOOGLE_API_KEY:
-        transcribe_methods.append("Gemini（YouTube 直传）")
-    if GROQ_API_KEY:
-        transcribe_methods.append("Groq Whisper")
-    checks["transcriptionService"] = {
-        "ok": bool(GOOGLE_API_KEY or GROQ_API_KEY),
-        "label": "语音转录服务",
-        "hint": "、".join(transcribe_methods) + " 已配置" if transcribe_methods else "未配置（需要 Gemini API Key 或 Groq API Key）",
-    }
-
     checks["searchService"] = {
         "ok": bool(SERPER_API_KEY),
         "label": "互联网搜索服务",
@@ -64,6 +53,24 @@ async def health_check():
         "ok": yt_ok,
         "label": "视频下载工具",
         "hint": "未安装或不在 PATH 中" if not yt_ok else "已就绪",
+    }
+
+    transcribe_methods = []
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi as _ytt  # noqa: F401
+        transcribe_methods.append("youtube-transcript-api（YouTube 字幕优先）")
+    except ImportError:
+        pass
+    if yt_ok:
+        transcribe_methods.append("yt-dlp 字幕（YouTube 字幕后备）")
+    if GROQ_API_KEY:
+        transcribe_methods.append("Groq Whisper")
+    if GOOGLE_API_KEY:
+        transcribe_methods.append("Gemini（YouTube 直传）")
+    checks["transcriptionService"] = {
+        "ok": bool(transcribe_methods),
+        "label": "语音转录服务",
+        "hint": "、".join(transcribe_methods) + " 已配置" if transcribe_methods else "未配置（需要 Gemini API Key 或 Groq API Key）",
     }
 
     try:

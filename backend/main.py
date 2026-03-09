@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from lib.db import get_db, close_db
-from routers import topics, videos, collect, stats, creators, proxy
+from routers import topics, videos, collect, stats, creators, proxy, settings
 
 
 @asynccontextmanager
@@ -80,6 +80,7 @@ app.include_router(videos.router, prefix="/api")
 app.include_router(creators.router, prefix="/api")
 app.include_router(collect.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
+app.include_router(settings.router, prefix="/api")
 app.include_router(proxy.router, prefix="/api")
 
 

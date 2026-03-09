@@ -14,5 +14,6 @@ DB_PATH = os.getenv("DB_PATH", str(Path(__file__).resolve().parents[1] / "knowle
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
+GOOGLE_API_KEY = os.getenv("GOOGLE_GENERATIVE_AI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
 BILIBILI_SESSDATA = os.getenv("BILIBILI_SESSDATA", "")
 SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")

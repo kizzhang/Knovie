@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import sys
 
 from fastapi import APIRouter, HTTPException
 from loguru import logger
@@ -225,11 +226,13 @@ async def _collect_image_urls(topic_id: str) -> list[str]:
     """Gather all thumbnail and avatar URLs for a topic."""
     urls: list[str] = []
     try:
-        videos = await db.get_videos(topic_id=topic_id, page=1, per_page=9999)
-        if isinstance(videos, dict):
-            items = videos.get("items", [])
+        video_result = await db.get_videos(topic_id=topic_id, page=1, page_size=9999)
+        if isinstance(video_result, tuple):
+            items, _ = video_result
+        elif isinstance(video_result, dict):
+            items = video_result.get("items", [])
         else:
-            items = videos
+            items = video_result
         for v in items:
             thumb = v.get("thumbnailUrl") or v.get("thumbnail_url")
             if thumb:
@@ -362,7 +365,7 @@ async def _import_youtube_video(topic_id: str, video_id: str) -> dict:
 
     def _fetch():
         cmd = [
-            "yt-dlp", "--dump-json", "--no-download",
+            sys.executable, "-m", "yt_dlp", "--dump-json", "--no-download",
             f"https://www.youtube.com/watch?v={video_id}",
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -503,7 +506,7 @@ async def _import_youtube_creator(topic_id: str, channel_id: str, max_videos: in
 
     def _fetch():
         cmd = [
-            "yt-dlp", "--flat-playlist", "--dump-json",
+            sys.executable, "-m", "yt_dlp", "--flat-playlist", "--dump-json",
             "--no-warnings", "--no-check-certificates",
             "--playlist-end", str(max_videos),
             channel_url,

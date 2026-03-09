@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -13,7 +14,8 @@ from handlers.bilibili_handler import get_bilibili_subtitle
 from handlers.youtube_handler import get_youtube_subtitle
 from lib.cache_paths import audio_cache_base
 from services.groq_whisper_service import transcribe_audio
-from lib.config import GROQ_API_KEY
+from services.gemini_transcribe_service import transcribe_youtube_via_gemini
+from lib.config import GROQ_API_KEY, GOOGLE_API_KEY
 
 _executor = ThreadPoolExecutor(max_workers=2)
 
@@ -73,8 +75,9 @@ async def transcribe_topic_videos(topic_id: str, task_id: str) -> None:
 async def _transcribe_single(video: dict) -> list[dict] | None:
     """Try to transcribe a single video using the fallback chain:
     1. Platform subtitles (free, fastest)
-    2. Groq Whisper API (free, fast)
-    3. Skip (don't block on unavailable methods)
+    2. Gemini direct transcription (YouTube only, no download needed)
+    3. Groq Whisper API (needs audio download via yt-dlp)
+    4. Skip
     """
     vid = video["platformVideoId"]
     platform = video["platform"]
@@ -96,7 +99,16 @@ async def _transcribe_single(video: dict) -> list[dict] | None:
     except Exception as e:
         logger.warning(f"[transcribe] subtitle fetch failed platform={platform} video_id={vid} error={e}")
 
-    # Step 2: Try Groq Whisper (needs audio download)
+    # Step 2: Gemini direct transcription (YouTube only — no download needed)
+    if platform == "youtube" and GOOGLE_API_KEY:
+        try:
+            segments = await transcribe_youtube_via_gemini(vid)
+            if segments:
+                return [{"start": s["start"], "end": s["end"], "text": s["text"], "_source": "gemini"} for s in segments]
+        except Exception as e:
+            logger.warning(f"Gemini transcription failed for {vid}: {e}")
+
+    # Step 3: Groq Whisper (needs audio download)
     if GROQ_API_KEY:
         try:
             audio_path = await _download_audio(video)
@@ -137,7 +149,7 @@ def _download_audio_sync(platform: str, video_id: str, url: str) -> str | None:
         return cached
 
     cmd = [
-        "yt-dlp",
+        sys.executable, "-m", "yt_dlp",
         "--extract-audio",
         "--audio-format", "mp3",
         "--audio-quality", "5",

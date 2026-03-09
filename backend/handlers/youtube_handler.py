@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from loguru import logger
 
 from lib import db
 from lib.cache_paths import subtitle_cache_path
+
+_YT_DLP_CMD = [sys.executable, "-m", "yt_dlp"]
 
 DEFAULT_MAX_CREATORS = 10
 DEFAULT_MAX_VIDEOS_PER_CREATOR = 0  # 0 = unlimited
@@ -90,7 +93,7 @@ async def _yt_search(query: str, max_results: int = 50) -> list[dict]:
 
 def _yt_search_sync(query: str, max_results: int) -> list[dict]:
     cmd = [
-        "yt-dlp", "--flat-playlist", "--dump-json",
+        *_YT_DLP_CMD, "--flat-playlist", "--dump-json",
         "--no-warnings", "--no-check-certificates",
         f"ytsearch{max_results}:{query}",
     ]
@@ -152,7 +155,7 @@ def _download_youtube_subtitle(video_id: str, langs: list[str], label: str) -> P
         return existing
 
     cmd = [
-        "yt-dlp",
+        *_YT_DLP_CMD,
         "--skip-download",
         "--write-subs",
         "--write-auto-subs",

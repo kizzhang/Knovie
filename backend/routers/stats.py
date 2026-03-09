@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 
 from fastapi import APIRouter
 
 from lib import db
-from lib.config import GROQ_API_KEY, BILIBILI_SESSDATA, SERPER_API_KEY
+from lib.config import GROQ_API_KEY, BILIBILI_SESSDATA, SERPER_API_KEY, GOOGLE_API_KEY
 
 router = APIRouter(tags=["stats"])
 
@@ -34,10 +35,15 @@ async def health_check():
         "hint": "前端环境变量 GOOGLE_GENERATIVE_AI_API_KEY",
     }
 
+    transcribe_methods = []
+    if GOOGLE_API_KEY:
+        transcribe_methods.append("Gemini（YouTube 直传）")
+    if GROQ_API_KEY:
+        transcribe_methods.append("Groq Whisper")
     checks["transcriptionService"] = {
-        "ok": bool(GROQ_API_KEY),
+        "ok": bool(GOOGLE_API_KEY or GROQ_API_KEY),
         "label": "语音转录服务",
-        "hint": "未配置" if not GROQ_API_KEY else "已配置",
+        "hint": "、".join(transcribe_methods) + " 已配置" if transcribe_methods else "未配置（需要 Gemini API Key 或 Groq API Key）",
     }
 
     checks["searchService"] = {
@@ -47,6 +53,13 @@ async def health_check():
     }
 
     yt_ok = shutil.which("yt-dlp") is not None
+    if not yt_ok:
+        try:
+            subprocess.run([sys.executable, "-m", "yt_dlp", "--version"],
+                           capture_output=True, timeout=5, check=True)
+            yt_ok = True
+        except Exception:
+            yt_ok = False
     checks["videoDownloader"] = {
         "ok": yt_ok,
         "label": "视频下载工具",

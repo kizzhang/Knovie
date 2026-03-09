@@ -4,14 +4,18 @@ import asyncio
 import json
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from loguru import logger
 
 from lib import db
+from lib.cache_paths import subtitle_cache_path
 
 DEFAULT_MAX_CREATORS = 10
 DEFAULT_MAX_VIDEOS_PER_CREATOR = 0  # 0 = unlimited
 _executor = ThreadPoolExecutor(max_workers=2)
+_YOUTUBE_ZH_LANGS = ["zh-Hans", "zh", "zh-CN", "zh-TW", "zh-HK"]
+_YOUTUBE_EN_LANGS = ["en"]
 
 
 async def scrape_youtube(topic_id: str, keyword: str, *, max_creators: int = 0, max_videos_per_creator: int = 0) -> None:
@@ -115,61 +119,112 @@ async def get_youtube_subtitle(video_id: str) -> list[dict] | None:
 
 
 def _get_subtitle_sync(video_id: str) -> list[dict] | None:
+    logger.info(f"[youtube subtitle] start video_id={video_id}")
+
+    cached_path = _find_cached_youtube_subtitle(video_id, _YOUTUBE_ZH_LANGS + _YOUTUBE_EN_LANGS)
+    if cached_path:
+        logger.info(f"[youtube subtitle] cache hit video_id={video_id} path={cached_path}")
+        segments = _parse_youtube_json3(cached_path)
+        logger.info(f"[youtube subtitle] parsed cached subtitle video_id={video_id} segments={len(segments) if segments else 0}")
+        return segments
+
+    for lang_group, label in [(_YOUTUBE_ZH_LANGS, "zh"), (_YOUTUBE_EN_LANGS, "en")]:
+        cache_path = _download_youtube_subtitle(video_id, lang_group, label)
+        if not cache_path:
+            continue
+
+        logger.info(f"[youtube subtitle] downloaded subtitle video_id={video_id} path={cache_path} preferred={label}")
+        segments = _parse_youtube_json3(cache_path)
+        logger.info(f"[youtube subtitle] parsed downloaded subtitle video_id={video_id} segments={len(segments) if segments else 0}")
+        if segments:
+            return segments
+
+    logger.warning(f"[youtube subtitle] no preferred subtitle downloaded video_id={video_id}")
+    return None
+
+
+def _download_youtube_subtitle(video_id: str, langs: list[str], label: str) -> Path | None:
+    base_path = subtitle_cache_path("youtube", video_id, "")
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    existing = _find_cached_youtube_subtitle(video_id, langs)
+    if existing:
+        logger.info(f"[youtube subtitle] reuse cached subtitle video_id={video_id} path={existing} preferred={label}")
+        return existing
+
     cmd = [
-        "yt-dlp", "--skip-download", "--write-auto-sub", "--sub-lang", "zh,en",
-        "--sub-format", "json3", "--dump-json",
-        "--no-warnings", "--no-check-certificates",
-        f"https://www.youtube.com/watch?v={video_id}",
+        "yt-dlp",
+        "--skip-download",
+        "--write-subs",
+        "--write-auto-subs",
+        "--sub-format", "json3",
+        "--no-warnings",
+        "--no-check-certificates",
+        "-o", str(base_path),
+        "--sub-langs", ",".join(langs),
     ]
+    cmd.append(url)
+
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        logger.info(f"[youtube subtitle] download attempt video_id={video_id} preferred={label} langs={langs}")
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
         if proc.returncode != 0:
+            err = (proc.stderr or "").strip().replace("\n", " ")[:300]
+            logger.warning(
+                f"[youtube subtitle] yt-dlp subtitle file download failed "
+                f"video_id={video_id} preferred={label} returncode={proc.returncode} stderr={err}"
+            )
             return None
-
-        data = json.loads(proc.stdout)
-        subs = data.get("subtitles", {})
-        auto_subs = data.get("automatic_captions", {})
-
-        sub_data = None
-        for lang_key in ["zh-Hans", "zh", "zh-CN", "en"]:
-            if lang_key in subs:
-                sub_data = subs[lang_key]
-                break
-            if lang_key in auto_subs:
-                sub_data = auto_subs[lang_key]
-                break
-
-        if not sub_data:
-            return None
-
-        # Get json3 format URL and download
-        json3_url = None
-        for fmt in sub_data:
-            if fmt.get("ext") == "json3":
-                json3_url = fmt.get("url")
-                break
-
-        if not json3_url:
-            return None
-
-        import httpx
-        resp = httpx.get(json3_url, timeout=30)
-        events = resp.json().get("events", [])
-
-        segments = []
-        for ev in events:
-            start_ms = ev.get("tStartMs", 0)
-            dur_ms = ev.get("dDurationMs", 0)
-            segs = ev.get("segs", [])
-            text = "".join(s.get("utf8", "") for s in segs).strip()
-            if text and text != "\n":
-                segments.append({
-                    "start": round(start_ms / 1000, 2),
-                    "end": round((start_ms + dur_ms) / 1000, 2),
-                    "text": text,
-                })
-
-        return segments if segments else None
-
-    except (FileNotFoundError, subprocess.TimeoutExpired, json.JSONDecodeError):
+    except FileNotFoundError:
+        logger.warning("[youtube subtitle] yt-dlp not found during subtitle download")
         return None
+    except subprocess.TimeoutExpired:
+        logger.warning(f"[youtube subtitle] subtitle file download timed out video_id={video_id}")
+        return None
+
+    return _find_cached_youtube_subtitle(video_id, langs)
+
+
+def _find_cached_youtube_subtitle(video_id: str, preferred_langs: list[str] | None = None) -> Path | None:
+    candidates = sorted(subtitle_cache_path("youtube", video_id, "").parent.glob(f"youtube_{video_id}*.json3"))
+    if not candidates:
+        return None
+
+    if not preferred_langs:
+        return candidates[0]
+
+    by_lang = {path: _subtitle_lang(path, video_id) for path in candidates}
+    for lang in preferred_langs:
+        for path, path_lang in by_lang.items():
+            if path_lang == lang:
+                return path
+    return candidates[0]
+
+
+def _subtitle_lang(path: Path, video_id: str) -> str:
+    prefix = f"youtube_{video_id}."
+    name = path.name
+    if name.startswith(prefix) and name.endswith(".json3"):
+        return name[len(prefix):-len(".json3")]
+    return ""
+
+
+def _parse_youtube_json3(path: Path) -> list[dict] | None:
+    try:
+        events = json.loads(path.read_text(encoding="utf-8")).get("events", [])
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    segments = []
+    for ev in events:
+        start_ms = ev.get("tStartMs", 0)
+        dur_ms = ev.get("dDurationMs", 0)
+        segs = ev.get("segs", [])
+        text = "".join(s.get("utf8", "") for s in segs).strip()
+        if text and text != "\n":
+            segments.append({
+                "start": round(start_ms / 1000, 2),
+                "end": round((start_ms + dur_ms) / 1000, 2),
+                "text": text,
+            })
+
+    return segments if segments else None

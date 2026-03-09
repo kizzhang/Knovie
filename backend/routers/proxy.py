@@ -12,7 +12,14 @@ import httpx
 
 router = APIRouter()
 
-CACHE_DIR = Path(os.getenv("IMAGE_CACHE_DIR", str(Path(__file__).resolve().parents[1] / "cache" / "images")))
+_DEFAULT_CACHE_DIR = Path(__file__).resolve().parents[1] / "cache" / "images"
+_raw_cache_dir = os.getenv("IMAGE_CACHE_DIR")
+_cache_dir_value = _raw_cache_dir.strip() if _raw_cache_dir else ""
+if _cache_dir_value and not _cache_dir_value.startswith("#"):
+    CACHE_DIR = Path(_cache_dir_value)
+else:
+    CACHE_DIR = _DEFAULT_CACHE_DIR
+
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 _FETCH_HEADERS = {

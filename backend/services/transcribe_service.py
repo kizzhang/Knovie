@@ -3,14 +3,15 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
-import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from loguru import logger
 
 from lib import db
 from handlers.bilibili_handler import get_bilibili_subtitle
 from handlers.youtube_handler import get_youtube_subtitle
+from lib.cache_paths import audio_cache_base
 from services.groq_whisper_service import transcribe_audio
 from lib.config import GROQ_API_KEY
 
@@ -77,6 +78,7 @@ async def _transcribe_single(video: dict) -> list[dict] | None:
     """
     vid = video["platformVideoId"]
     platform = video["platform"]
+    logger.info(f"[transcribe] start subtitle lookup platform={platform} video_id={vid}")
 
     # Step 1: Try platform subtitles
     try:
@@ -88,22 +90,21 @@ async def _transcribe_single(video: dict) -> list[dict] | None:
             segments = None
 
         if segments:
-            logger.debug(f"Got subtitle for {vid}")
+            logger.info(f"[transcribe] subtitle hit platform={platform} video_id={vid} segments={len(segments)}")
             return [{"start": s["start"], "end": s["end"], "text": s["text"], "_source": "subtitle"} for s in segments]
+        logger.info(f"[transcribe] subtitle miss platform={platform} video_id={vid}")
     except Exception as e:
-        logger.warning(f"Subtitle fetch failed for {vid}: {e}")
+        logger.warning(f"[transcribe] subtitle fetch failed platform={platform} video_id={vid} error={e}")
 
     # Step 2: Try Groq Whisper (needs audio download)
     if GROQ_API_KEY:
         try:
             audio_path = await _download_audio(video)
             if audio_path:
-                try:
-                    segments = await transcribe_audio(audio_path)
-                    return [{"start": s["start"], "end": s["end"], "text": s["text"], "_source": "groq_whisper"} for s in segments]
-                finally:
-                    if os.path.exists(audio_path):
-                        os.unlink(audio_path)
+                segments = await transcribe_audio(audio_path)
+                return [{"start": s["start"], "end": s["end"], "text": s["text"], "_source": "groq_whisper"} for s in segments]
+            else:
+                logger.warning(f"Audio download returned empty for {vid}, skip Groq fallback")
         except Exception as e:
             logger.warning(f"Groq Whisper failed for {vid}: {e}")
 
@@ -111,7 +112,7 @@ async def _transcribe_single(video: dict) -> list[dict] | None:
 
 
 async def _download_audio(video: dict) -> str | None:
-    """Download audio for a video using yt-dlp."""
+    """Download audio for a video using yt-dlp and keep a cached local copy."""
     platform = video["platform"]
     vid = video["platformVideoId"]
 
@@ -123,15 +124,17 @@ async def _download_audio(video: dict) -> str | None:
         return None
 
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_executor, _download_audio_sync, url)
+    return await loop.run_in_executor(_executor, _download_audio_sync, platform, vid, url)
 
 
-def _download_audio_sync(url: str) -> str | None:
-    """Download audio to temp file. Returns path or None."""
-    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-        output_path = f.name
+def _download_audio_sync(platform: str, video_id: str, url: str) -> str | None:
+    """Download audio to cache dir. Returns cached path or None."""
+    base = str(audio_cache_base(platform, video_id))
 
-    base = output_path.rsplit(".", 1)[0]
+    cached = _find_cached_audio(base)
+    if cached:
+        logger.info(f"[audio cache] hit platform={platform} video_id={video_id} path={cached}")
+        return cached
 
     cmd = [
         "yt-dlp",
@@ -145,23 +148,16 @@ def _download_audio_sync(url: str) -> str | None:
     ]
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, timeout=300)
+        logger.info(f"[audio cache] download start platform={platform} video_id={video_id}")
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if proc.returncode != 0:
-            logger.warning(f"yt-dlp exit code {proc.returncode} for {url}")
+            err = (proc.stderr or "").strip().replace("\n", " ")[:300]
+            logger.warning(f"yt-dlp exit code {proc.returncode} for {url}; stderr={err}")
 
-        actual_path = output_path
-        if not os.path.exists(actual_path):
-            for ext in ["mp3", "m4a", "webm", "wav"]:
-                candidate = f"{base}.{ext}"
-                if os.path.exists(candidate):
-                    actual_path = candidate
-                    break
-
-        if os.path.exists(actual_path) and os.path.getsize(actual_path) > 0:
-            # Clean up the original placeholder if yt-dlp wrote a different extension
-            if actual_path != output_path and os.path.exists(output_path):
-                os.unlink(output_path)
-            return actual_path
+        cached = _find_cached_audio(base)
+        if cached:
+            logger.info(f"[audio cache] download success platform={platform} video_id={video_id} path={cached}")
+            return cached
 
         _cleanup_download_files(base)
         return None
@@ -173,13 +169,22 @@ def _download_audio_sync(url: str) -> str | None:
 
 def _cleanup_download_files(base: str) -> None:
     """Remove any temp files created during download."""
-    for ext in ["mp3", "m4a", "webm", "wav", "part"]:
+    for ext in ["mp3", "m4a", "webm", "wav", "opus", "mp4", "part"]:
         path = f"{base}.{ext}"
         if os.path.exists(path):
             try:
                 os.unlink(path)
             except OSError:
                 pass
+
+
+def _find_cached_audio(base: str) -> str | None:
+    base_path = Path(base)
+    for ext in ["mp3", "m4a", "webm", "wav", "opus", "mp4"]:
+        candidate = base_path.with_suffix(f".{ext}")
+        if candidate.exists() and candidate.stat().st_size > 0:
+            return str(candidate)
+    return None
 
 
 def _determine_source(segments: list[dict]) -> str:

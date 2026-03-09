@@ -241,6 +241,8 @@ docker compose up -d
 | `ALLOWED_ORIGINS` | `localhost:3000,...` | CORS 允许的域名 |
 | `RATE_LIMIT_ENABLED` | `false` | 启用 IP 速率限制 |
 | `IMAGE_CACHE_DIR` | `backend/cache/images` | 图片缓存目录 |
+| `SUBTITLE_CACHE_DIR` | `backend/cache/subtitles` | 原始字幕缓存目录 |
+| `AUDIO_CACHE_DIR` | `backend/cache/audio` | 原始音频缓存目录 |
 
 ---
 

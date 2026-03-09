@@ -21,6 +21,21 @@ _YOUTUBE_ZH_LANGS = ["zh-Hans", "zh", "zh-CN", "zh-TW", "zh-HK"]
 _YOUTUBE_EN_LANGS = ["en"]
 
 
+def _get_thumbnail(entry: dict) -> str:
+    """Extract best thumbnail URL from yt-dlp entry. flat-playlist sets thumbnail=null."""
+    url = entry.get("thumbnail") or ""
+    if url:
+        return url
+    thumbs = entry.get("thumbnails")
+    if thumbs and isinstance(thumbs, list):
+        best = max(thumbs, key=lambda t: t.get("height", 0) * t.get("width", 0))
+        return best.get("url", "")
+    vid = entry.get("id", "")
+    if vid:
+        return f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+    return ""
+
+
 async def scrape_youtube(topic_id: str, keyword: str, *, max_creators: int = 0, max_videos_per_creator: int = 0) -> None:
     effective_max_creators = max_creators if max_creators > 0 else DEFAULT_MAX_CREATORS
     effective_max_videos = max_videos_per_creator if max_videos_per_creator > 0 else DEFAULT_MAX_VIDEOS_PER_CREATOR
@@ -70,7 +85,7 @@ async def scrape_youtube(topic_id: str, keyword: str, *, max_creators: int = 0, 
                     creator_id=creator_id,
                     creator_name=ch_data["name"],
                     description=v.get("description", ""),
-                    thumbnail_url=v.get("thumbnail", ""),
+                    thumbnail_url=_get_thumbnail(v),
                     duration=v.get("duration") or 0,
                     view_count=v.get("view_count"),
                     like_count=v.get("like_count"),

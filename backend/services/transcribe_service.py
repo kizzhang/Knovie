@@ -75,8 +75,8 @@ async def transcribe_topic_videos(topic_id: str, task_id: str) -> None:
 async def _transcribe_single(video: dict) -> list[dict] | None:
     """Try to transcribe a single video using the fallback chain:
     1. Platform subtitles (free, fastest)
-    2. Gemini direct transcription (YouTube only, no download needed)
-    3. Groq Whisper API (needs audio download via yt-dlp)
+    2. Groq Whisper API (yt-dlp download + Groq, fast)
+    3. Gemini direct transcription (YouTube only, slower but no yt-dlp needed)
     4. Skip
     """
     vid = video["platformVideoId"]
@@ -99,16 +99,7 @@ async def _transcribe_single(video: dict) -> list[dict] | None:
     except Exception as e:
         logger.warning(f"[transcribe] subtitle fetch failed platform={platform} video_id={vid} error={e}")
 
-    # Step 2: Gemini direct transcription (YouTube only — no download needed)
-    if platform == "youtube" and GOOGLE_API_KEY:
-        try:
-            segments = await transcribe_youtube_via_gemini(vid)
-            if segments:
-                return [{"start": s["start"], "end": s["end"], "text": s["text"], "_source": "gemini"} for s in segments]
-        except Exception as e:
-            logger.warning(f"Gemini transcription failed for {vid}: {e}")
-
-    # Step 3: Groq Whisper (needs audio download)
+    # Step 2: Groq Whisper (needs audio download, but fast)
     if GROQ_API_KEY:
         try:
             audio_path = await _download_audio(video)
@@ -119,6 +110,15 @@ async def _transcribe_single(video: dict) -> list[dict] | None:
                 logger.warning(f"Audio download returned empty for {vid}, skip Groq fallback")
         except Exception as e:
             logger.warning(f"Groq Whisper failed for {vid}: {e}")
+
+    # Step 3: Gemini direct transcription (YouTube only — slower fallback)
+    if platform == "youtube" and GOOGLE_API_KEY:
+        try:
+            segments = await transcribe_youtube_via_gemini(vid)
+            if segments:
+                return [{"start": s["start"], "end": s["end"], "text": s["text"], "_source": "gemini"} for s in segments]
+        except Exception as e:
+            logger.warning(f"Gemini transcription failed for {vid}: {e}")
 
     return None
 

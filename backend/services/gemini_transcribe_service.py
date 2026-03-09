@@ -62,6 +62,7 @@ def _call_gemini_sync(video_id: str) -> list[dict] | None:
         )
 
         raw = response.text.strip()
+        logger.debug(f"Gemini raw response for {video_id}: {len(raw)} chars, starts with: {raw[:60]}")
         segments = _parse_segments(raw)
 
         if segments:

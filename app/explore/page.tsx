@@ -85,6 +85,7 @@ function ExploreContent() {
   }[]>([]);
   const [creatorsLoading, setCreatorsLoading] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [transcribeMsg, setTranscribeMsg] = useState("");
   const [creatorSearch, setCreatorSearch] = useState("");
   const [urlSearch, setUrlSearch] = useState("");
   const [urlSearching, setUrlSearching] = useState(false);
@@ -237,9 +238,11 @@ function ExploreContent() {
         try {
           const sr = await fetch(`/api/collect/${data.taskId}/status`);
           const task = await sr.json();
+          if (task.message) setTranscribeMsg(task.message);
           if (task.status === "done" || task.status === "failed") {
             clearInterval(poll);
             setTranscribing(false);
+            setTranscribeMsg("");
             if (task.status === "done") {
               toast.success("转录完成");
               fetchVideos();
@@ -430,8 +433,12 @@ function ExploreContent() {
       {/* Transcribe banner */}
       {selectedTopic && selectedTopic.videoCount > 0 && selectedTopic.transcribedCount < selectedTopic.videoCount && (
         <div className="flex items-center gap-3 rounded-lg border border-amber-200/60 bg-amber-50/40 px-3.5 py-2">
-          <div className="flex-1 text-[12px] text-amber-800/80">
-            <span className="font-medium">{selectedTopic.videoCount - selectedTopic.transcribedCount} 个视频</span>未转录，转录后可搜索内容和 AI 问答
+          <div className="flex-1 min-w-0 text-[12px] text-amber-800/80">
+            {transcribing && transcribeMsg ? (
+              <span className="truncate block">{transcribeMsg}</span>
+            ) : (
+              <><span className="font-medium">{selectedTopic.videoCount - selectedTopic.transcribedCount} 个视频</span>未转录，转录后可搜索内容和 AI 问答</>
+            )}
           </div>
           <button
             onClick={startTranscribe}

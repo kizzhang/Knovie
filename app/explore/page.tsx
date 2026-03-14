@@ -327,6 +327,7 @@ function ExploreContent() {
               setPage(1);
             }}
             disabled={transcriptFilter === "no"}
+            aria-label="搜索转录内容"
             className={cn(
               "h-8 pl-8 rounded-lg border-black/10 bg-white/40 backdrop-blur-sm text-[13px] placeholder:text-[#bbb]",
               transcriptFilter === "no" && "opacity-50 cursor-not-allowed"

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
+import socket
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Query
 from fastapi.responses import FileResponse, Response
@@ -66,7 +69,7 @@ def _read_meta(key: str) -> dict | None:
 
 async def ensure_cached(url: str) -> Path | None:
     """Download and cache an image if not already cached. Returns local path or None on failure."""
-    if not url:
+    if not url or not _is_safe_url(url):
         return None
 
     key = _cache_key(url)
@@ -114,8 +117,48 @@ async def precache_images(urls: list[str]) -> int:
     return cached
 
 
+import ipaddress
+import socket
+from urllib.parse import urlparse
+
+_ALLOWED_HOSTS = {
+    "i.hdslb.com", "i0.hdslb.com", "i1.hdslb.com", "i2.hdslb.com",
+    "archive.biliimg.com", "s1.hdslb.com",
+    "i.ytimg.com", "i9.ytimg.com", "img.youtube.com", "yt3.ggpht.com",
+    "yt3.googleusercontent.com",
+}
+
+def _is_safe_url(url: str) -> bool:
+    """Reject private/internal IPs and non-whitelisted hosts."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = parsed.hostname or ""
+        if not hostname:
+            return False
+        # Allow whitelisted CDN hosts
+        if hostname in _ALLOWED_HOSTS:
+            return True
+        # Block private IPs
+        try:
+            resolved = socket.getaddrinfo(hostname, None)
+            for _, _, _, _, addr in resolved:
+                ip = ipaddress.ip_address(addr[0])
+                if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+                    return False
+        except (socket.gaierror, ValueError):
+            return False
+        return True
+    except Exception:
+        return False
+
+
 @router.get("/proxy-image")
 async def proxy_image(url: str = Query(..., description="Image URL to proxy")):
+    if not _is_safe_url(url):
+        return Response(status_code=403, content="Forbidden: URL not allowed")
+
     key = _cache_key(url)
     cached = _get_cached_path(key)
 

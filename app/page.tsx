@@ -33,6 +33,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chartReady, setChartReady] = useState(false);
 
   useEffect(() => {
     fetch("/api/stats")
@@ -44,6 +45,13 @@ export default function DashboardPage() {
       .catch((e) => setError(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (stats) {
+      const id = setTimeout(() => setChartReady(true), 100);
+      return () => clearTimeout(id);
+    }
+  }, [stats]);
 
   if (loading) return <DashboardSkeleton />;
   if (error) return <ErrorState message={error} />;
@@ -114,7 +122,8 @@ export default function DashboardPage() {
               </div>
 
               <div className="w-full aspect-square max-w-[180px]" style={{ filter: "drop-shadow(0 8px 24px rgba(99,102,241,.18)) drop-shadow(0 2px 8px rgba(6,182,212,.12))" }}>
-                <ResponsiveContainer width="100%" height="100%">
+                {chartReady && (
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                   <PieChart>
                     <defs>
                       <linearGradient id="grad-seg-0" x1="0" y1="0" x2="1" y2="1">
@@ -153,6 +162,7 @@ export default function DashboardPage() {
                     />
                   </PieChart>
                 </ResponsiveContainer>
+                )}
               </div>
             </div>
           ) : (

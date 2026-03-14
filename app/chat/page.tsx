@@ -343,6 +343,8 @@ function ChatContent() {
           <div className="flex items-center gap-1">
             <button
               type="button"
+              onClick={() => toast.info("附件功能开发中")}
+              aria-label="添加附件"
               className="flex size-8 items-center justify-center rounded-full border border-black/[.10] text-[#999] transition-colors hover:bg-black/[.03] hover:text-[#666]"
             >
               <Plus className="size-4" strokeWidth={1.5} />
@@ -351,13 +353,8 @@ function ChatContent() {
           <div className="flex items-center gap-1.5">
             <button
               type="button"
-              className="flex items-center gap-1 rounded-full px-2.5 py-1.5 text-[12px] font-[450] text-[#888] transition-colors hover:bg-black/[.04] hover:text-[#555]"
-            >
-              模型
-              <svg className="size-3 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <button
-              type="button"
+              onClick={() => toast.info("语音输入功能开发中")}
+              aria-label="语音输入"
               className="flex size-8 items-center justify-center rounded-full text-[#999] transition-colors hover:bg-black/[.04] hover:text-[#555]"
             >
               <Mic className="size-4" strokeWidth={1.5} />
@@ -469,22 +466,27 @@ function ChatContent() {
         <div className="w-full max-w-[620px]">
           {promptBox}
 
-          <div className="flex flex-wrap justify-center gap-2 mt-4">
-            {SUGGESTION_PILLS.map((pill) => (
-              <LiquidGlassCard
-                key={pill.label}
-                className="rounded-full px-3.5 py-[7px] cursor-pointer"
-              >
-                <button
-                  onClick={() => setInput(pill.label)}
-                  className="flex items-center gap-[5px] text-[13px] font-[430] text-[#555]"
+          {selectedTopic && (
+            <div className="flex flex-wrap justify-center gap-2 mt-4">
+              {SUGGESTION_PILLS.map((pill) => (
+                <LiquidGlassCard
+                  key={pill.label}
+                  className="rounded-full px-3.5 py-[7px] cursor-pointer"
                 >
-                  <pill.icon className="size-3.5 opacity-50" strokeWidth={1.5} />
-                  {pill.label}
-                </button>
-              </LiquidGlassCard>
-            ))}
-          </div>
+                  <button
+                    onClick={() => {
+                      setInput(pill.label);
+                      textareaRef.current?.focus();
+                    }}
+                    className="flex items-center gap-[5px] text-[13px] font-[430] text-[#555]"
+                  >
+                    <pill.icon className="size-3.5 opacity-50" strokeWidth={1.5} />
+                    {pill.label}
+                  </button>
+                </LiquidGlassCard>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );

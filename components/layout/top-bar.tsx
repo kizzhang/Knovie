@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Menu } from "lucide-react";
 import { useTopic } from "@/lib/topic-context";
 import {
   Select,
@@ -19,7 +20,13 @@ const PAGE_TITLES: Record<string, string> = {
   "/settings": "设置",
 };
 
-export function TopBar({ pathname }: { pathname: string }) {
+export function TopBar({
+  pathname,
+  onMenuClick,
+}: {
+  pathname: string;
+  onMenuClick?: () => void;
+}) {
   const { topics, selectedTopic, selectTopic } = useTopic();
 
   const title = Object.entries(PAGE_TITLES).find(
@@ -29,11 +36,20 @@ export function TopBar({ pathname }: { pathname: string }) {
   const hideTopicSelector = pathname === "/" || pathname === "/collect" || pathname === "/settings" || pathname === "/tasks";
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-black/[.06] px-6">
-      <h1 className="text-[15px] font-medium tracking-tight text-foreground">{title}</h1>
+    <header className="flex h-14 items-center justify-between border-b border-black/[.06] px-4 md:px-6">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onMenuClick}
+          className="flex md:hidden size-8 items-center justify-center rounded-lg text-[#777] transition-colors hover:bg-black/5"
+          aria-label="打开导航菜单"
+        >
+          <Menu className="size-5" strokeWidth={1.5} />
+        </button>
+        <h1 className="text-[15px] font-medium tracking-tight text-foreground">{title}</h1>
+      </div>
       {!hideTopicSelector && (
         <div className="flex items-center gap-3">
-          <span className="text-[12px] text-[#999]">当前知识库</span>
+          <span className="text-[12px] text-[#999] hidden sm:inline">当前知识库</span>
           {topics.length > 0 ? (
             <Select
               value={selectedTopic?.id ?? ""}
@@ -42,7 +58,7 @@ export function TopBar({ pathname }: { pathname: string }) {
                 if (t) selectTopic(t);
               }}
             >
-              <SelectTrigger className="w-48 h-8 rounded-lg border-black/10 bg-white text-[13px] font-[450]">
+              <SelectTrigger className="w-36 sm:w-48 h-8 rounded-lg border-black/10 bg-white text-[13px] font-[450]">
                 <SelectValue placeholder="选择知识库..." />
               </SelectTrigger>
               <SelectContent>

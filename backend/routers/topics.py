@@ -1,18 +1,36 @@
 from __future__ import annotations
 
+import html
+import re
+
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
+from typing import Literal
 
 from lib import db
 
 router = APIRouter(tags=["topics"])
 
+_SAFE_NAME_RE = re.compile(r"^[\w\u4e00-\u9fff\u3000-\u303f\s\-·.,!?！？，。、：:()（）\[\]【】]+$")
+
 
 class CreateTopicBody(BaseModel):
-    name: str
-    platforms: list[str]
-    maxCreators: int = 10
-    maxVideosPerCreator: int = 0
+    name: str = Field(..., min_length=1, max_length=200)
+    platforms: list[Literal["bilibili", "youtube"]] = Field(..., min_length=1)
+    maxCreators: int = Field(default=10, ge=1, le=100)
+    maxVideosPerCreator: int = Field(default=0, ge=0, le=500)
+
+    @field_validator("name")
+    @classmethod
+    def sanitize_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("名称不能为空")
+        # HTML entity escape to prevent stored XSS
+        v = html.escape(v, quote=True)
+        if len(v) > 200:
+            raise ValueError("名称过长（最多200字符）")
+        return v
 
 
 @router.post("/topics")

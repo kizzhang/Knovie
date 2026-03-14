@@ -389,7 +389,7 @@ function CollectContent() {
         )}
 
         {/* Tab bar */}
-        {!isAppendUI && !collecting && (
+        {!isAppendUI && !collecting && !done && (
           <div className="flex gap-1 mb-4 border-b border-black/[.06]">
             {TABS.map(({ key, label, icon: Icon }) => (
               <button

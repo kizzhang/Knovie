@@ -37,7 +37,7 @@ function getRelativeTime(isoStr: string): string {
   return `${Math.floor(days / 30)}月前`;
 }
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [recentChats, setRecentChats] = useState<SavedConversation[]>([]);
@@ -63,7 +63,7 @@ export function Sidebar() {
       {/* Logo + Collapse */}
       <div className="flex h-14 items-center justify-between px-3">
         {!collapsed && (
-          <Link href="/" className="flex items-center">
+          <Link href="/" className="flex items-center" onClick={onNavigate}>
             <span className="text-[15px] font-[480] tracking-tight text-foreground">
               知频
             </span>
@@ -71,6 +71,7 @@ export function Sidebar() {
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
+          aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
           className={cn(
             "flex size-8 items-center justify-center rounded-lg text-[#777] transition-colors hover:bg-black/5",
             collapsed && "mx-auto"
@@ -87,24 +88,24 @@ export function Sidebar() {
       <div className="mx-1 h-px bg-black/[.07]" />
 
       {/* Navigation */}
-      <nav className="flex-1 flex flex-col gap-px p-2.5 overflow-hidden">
+      <nav className="flex-1 flex flex-col gap-px p-2.5 overflow-hidden" aria-label="主导航">
         {NAV_ITEMS.map((item) => {
           const isActive =
             item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (
-            <Link key={item.href} href={item.href}>
+            <Link key={item.href} href={item.href} onClick={onNavigate}>
               <div
                 className={cn(
                   "flex items-center gap-2.5 rounded-lg px-3 py-2 text-[14px] transition-colors",
                   isActive
-                    ? "bg-black/[.06] font-medium text-foreground"
+                    ? "bg-primary/10 font-medium text-primary"
                     : "font-[450] text-foreground/70 hover:bg-black/5 hover:text-foreground"
                 )}
               >
                 <item.icon
                   className={cn(
                     "size-[18px] shrink-0",
-                    isActive ? "text-foreground" : "text-[#555]"
+                    isActive ? "text-primary" : "text-[#555]"
                   )}
                   strokeWidth={1.5}
                 />
@@ -124,10 +125,10 @@ export function Sidebar() {
               {recentChats.map((chat) => {
                 const isActive = pathname === "/chat" && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("id") === chat.id;
                 return (
-                  <Link key={chat.id} href={`/chat?id=${chat.id}`}>
+                  <Link key={chat.id} href={`/chat?id=${chat.id}`} onClick={onNavigate}>
                     <div className={cn(
                       "rounded-md px-3 py-1.5 transition-colors hover:bg-black/5 group",
-                      isActive && "bg-black/[.04]"
+                      isActive && "bg-primary/5"
                     )}>
                       <p className="text-[12px] text-foreground/80 truncate leading-tight">
                         {chat.title}

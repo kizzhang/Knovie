@@ -57,7 +57,7 @@ importers:
         specifier: ^4.3.6
         version: 4.3.6
     devDependencies:
-      '@playwright/test':
+      playwright:
         specifier: ^1.58.2
         version: 1.58.2
 
@@ -1906,6 +1906,7 @@ snapshots:
   '@playwright/test@1.58.2':
     dependencies:
       playwright: 1.58.2
+    optional: true
 
   '@radix-ui/number@1.1.1': {}
 

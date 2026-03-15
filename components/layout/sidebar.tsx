@@ -11,12 +11,14 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeft,
+  Sparkles,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { listConversations, type SavedConversation } from "@/lib/conversations";
 
 const NAV_ITEMS = [
+  { href: "/agent", label: "AI 探索", icon: Sparkles },
   { href: "/", label: "仪表盘", icon: LayoutDashboard },
   { href: "/collect", label: "采集", icon: Download },
   { href: "/explore", label: "浏览", icon: Library },

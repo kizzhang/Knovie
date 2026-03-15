@@ -1,9 +1,19 @@
-import { streamText, tool, convertToModelMessages } from "ai";
+import { streamText, tool, convertToModelMessages, stepCountIs } from "ai";
 import { google } from "@ai-sdk/google";
+import type { GoogleGenerativeAIProviderOptions } from "@ai-sdk/google";
 import { z } from "zod";
 import { NextResponse } from "next/server";
 
-import { buildSystemPrompt, searchKnowledgeBase, getVideoTranscript, webSearch, getTopicInfo } from "@/lib/ai";
+import {
+  getTopicInfo,
+  getTopicKnowledge,
+  shouldDumpKnowledge,
+  buildDumpSystemPrompt,
+  buildSearchSystemPrompt,
+  searchTranscripts,
+  getVideoTranscript,
+  webSearch,
+} from "@/lib/ai";
 
 const MAX_MESSAGES = 50;
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
@@ -41,6 +51,23 @@ export async function POST(req: Request) {
       }
     }
 
+    let systemPrompt: string;
+    let isDumpMode = false;
+
+    if (topicId) {
+      const knowledge = await getTopicKnowledge(topicId);
+      if (knowledge && shouldDumpKnowledge(knowledge.totalChars)) {
+        isDumpMode = true;
+        systemPrompt = buildDumpSystemPrompt(topicName, knowledge.knowledge);
+        console.log(`[chat] dump mode: topic="${topicName}" videos=${knowledge.videoCount} chars=${knowledge.totalChars}`);
+      } else {
+        systemPrompt = buildSearchSystemPrompt(topicName, videoCount, transcribedCount);
+        console.log(`[chat] search mode: topic="${topicName}" chars=${knowledge?.totalChars ?? "?"}`);
+      }
+    } else {
+      systemPrompt = buildSearchSystemPrompt(topicName, videoCount, transcribedCount);
+    }
+
     const modelMessages = await convertToModelMessages(
       messages.map((m) => ({
         role: m.role as "user" | "assistant" | "system",
@@ -48,49 +75,66 @@ export async function POST(req: Request) {
       })),
     );
 
+    const tools: Record<string, ReturnType<typeof tool>> = {
+      searchTranscripts: tool({
+        description: "在视频转录知识库中搜索匹配的文字片段。返回包含匹配内容、视频标题、创作者和平台信息的结果列表。",
+        parameters: z.object({
+          query: z.string().describe("搜索关键词"),
+        }),
+        execute: async ({ query }) => {
+          const results = await searchTranscripts(query, topicId);
+          return { results, query };
+        },
+      }),
+      webSearch: tool({
+        description: "搜索互联网获取知识库中没有的最新信息。当知识库中找不到答案时使用。",
+        parameters: z.object({
+          query: z.string().describe("搜索查询"),
+        }),
+        execute: async ({ query }) => {
+          return webSearch(query);
+        },
+      }),
+    };
+
+    if (!isDumpMode) {
+      tools.getVideoTranscript = tool({
+        description: "获取特定视频的完整转录文本。当需要查看某个视频的详细内容时使用。",
+        parameters: z.object({
+          videoId: z.string().describe("视频ID"),
+        }),
+        execute: async ({ videoId }) => {
+          return getVideoTranscript(videoId);
+        },
+      });
+    }
+
     const result = streamText({
       model: google(MODEL),
-      system: buildSystemPrompt(topicName, videoCount, transcribedCount),
+      system: systemPrompt,
       messages: modelMessages,
-      maxSteps: 5,
-      tools: {
-        searchKnowledgeBase: tool({
-          description: "在视频转录知识库中搜索相关内容。当用户提出关于知识库主题的问题时使用此工具。",
-          parameters: z.object({
-            query: z.string().describe("搜索关键词"),
-            topicId: z.string().optional().describe("主题ID，限定搜索范围"),
-          }),
-          execute: async ({ query, topicId: tid }) => {
-            const videos = await searchKnowledgeBase(query, tid || topicId);
-            return { results: videos, query };
+      stopWhen: stepCountIs(isDumpMode ? 5 : 7),
+      tools,
+      providerOptions: {
+        google: {
+          thinkingConfig: {
+            thinkingBudget: 1024,
           },
-        }),
-        getVideoTranscript: tool({
-          description: "获取特定视频的完整转录文本。当需要查看某个视频的详细内容时使用。",
-          parameters: z.object({
-            videoId: z.string().describe("视频ID"),
-          }),
-          execute: async ({ videoId }) => {
-            return getVideoTranscript(videoId);
-          },
-        }),
-        webSearch: tool({
-          description: "搜索互联网获取知识库中没有的最新信息。当知识库中找不到答案时使用。",
-          parameters: z.object({
-            query: z.string().describe("搜索查询"),
-          }),
-          execute: async ({ query }) => {
-            return webSearch(query);
-          },
-        }),
+        } satisfies GoogleGenerativeAIProviderOptions,
       },
     });
 
-    return result.toUIMessageStreamResponse();
+    return result.toUIMessageStreamResponse({
+      onError(error) {
+        console.error("[chat/route] stream error:", error);
+        if (error instanceof Error) return error.message;
+        return String(error);
+      },
+    });
   } catch (e) {
-    console.error("[chat/route] stream error:", e);
+    console.error("[chat/route] top-level error:", e);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: e instanceof Error ? e.message : "Internal server error" },
       { status: 500 },
     );
   }

@@ -26,6 +26,16 @@ def _extract_video_id_from_url(url: str) -> tuple[str, str] | None:
     return None
 
 
+@router.get("/search/transcripts")
+async def search_transcripts(
+    q: str = Query(..., min_length=1),
+    topicId: str | None = None,
+):
+    """Full-text search across all transcripts, returning matching snippets."""
+    results = await db.search_transcripts(q, topic_id=topicId)
+    return {"results": results, "query": q}
+
+
 @router.get("/videos")
 async def list_videos(
     topicId: str | None = None,

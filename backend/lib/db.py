@@ -694,36 +694,66 @@ async def get_transcript(video_id: str) -> dict[str, Any] | None:
     }
 
 
+async def get_topic_knowledge(topic_id: str) -> list[dict[str, Any]]:
+    """Return all transcripts for a topic, joined with video metadata."""
+    if _is_pg:
+        rows = await _exec("""
+            SELECT v.title, v.creator_name, v.platform, v.platform_video_id,
+                   t.full_text
+            FROM transcripts t JOIN videos v ON v.id = t.video_id
+            WHERE v.topic_id = $1
+            ORDER BY v.created_at
+        """, (topic_id,), fetch=True)
+    else:
+        rows = await _exec("""
+            SELECT v.title, v.creator_name, v.platform, v.platform_video_id,
+                   t.full_text
+            FROM transcripts t JOIN videos v ON v.id = t.video_id
+            WHERE v.topic_id = ?
+            ORDER BY v.created_at
+        """, (topic_id,), fetch=True)
+
+    return [{
+        "videoTitle": r["title"],
+        "creatorName": r.get("creator_name", ""),
+        "platform": r["platform"],
+        "platformVideoId": r["platform_video_id"],
+        "text": r["full_text"],
+    } for r in rows]
+
+
 async def search_transcripts(query: str, topic_id: str | None = None) -> list[dict[str, Any]]:
     if _is_pg:
         if topic_id:
             rows = await _exec("""
                 SELECT t.video_id, t.full_text, v.title, v.creator_name, v.platform,
+                       v.platform_video_id,
                        ts_rank(t.search_vector, plainto_tsquery('simple', $1)) as rank
                 FROM transcripts t JOIN videos v ON v.id = t.video_id
                 WHERE t.search_vector @@ plainto_tsquery('simple', $1) AND v.topic_id = $2
-                ORDER BY rank DESC LIMIT 10
+                ORDER BY rank DESC LIMIT 15
             """, (query, topic_id), fetch=True)
         else:
             rows = await _exec("""
                 SELECT t.video_id, t.full_text, v.title, v.creator_name, v.platform,
+                       v.platform_video_id,
                        ts_rank(t.search_vector, plainto_tsquery('simple', $1)) as rank
                 FROM transcripts t JOIN videos v ON v.id = t.video_id
                 WHERE t.search_vector @@ plainto_tsquery('simple', $1)
-                ORDER BY rank DESC LIMIT 10
+                ORDER BY rank DESC LIMIT 15
             """, (query,), fetch=True)
     else:
         base = """
             SELECT fts.video_id, fts.full_text,
                    snippet(transcripts_fts, 0, '<b>', '</b>', '...', 64) as snippet,
-                   v.title, v.creator_name, v.platform, rank
+                   v.title, v.creator_name, v.platform, v.platform_video_id, rank
             FROM transcripts_fts fts JOIN videos v ON v.id = fts.video_id
         """
         if topic_id:
-            rows = await _exec(base + " WHERE fts.full_text MATCH ? AND v.topic_id = ? ORDER BY rank LIMIT 10",
+            rows = await _exec(base + " WHERE fts.full_text MATCH ? AND v.topic_id = ? ORDER BY rank LIMIT 15",
                                (query, topic_id), fetch=True)
         else:
-            rows = await _exec(base + " WHERE fts.full_text MATCH ? ORDER BY rank LIMIT 10",
+            rows = await _exec(base + " WHERE fts.full_text MATCH ? ORDER BY rank LIMIT 15",
                                (query,), fetch=True)
 
     results = []
@@ -733,7 +763,8 @@ async def search_transcripts(query: str, topic_id: str | None = None) -> list[di
             "videoTitle": r.get("title", ""),
             "creatorName": r.get("creator_name", ""),
             "platform": r.get("platform", ""),
-            "snippet": r.get("snippet", r.get("full_text", "")[:200]),
+            "platformVideoId": r.get("platform_video_id", ""),
+            "snippet": r.get("snippet", r.get("full_text", "")[:300]),
             "score": abs(r.get("rank", 0)),
         })
     return results

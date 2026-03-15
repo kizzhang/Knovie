@@ -7,6 +7,14 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
+        source: "/api/agent/search-youtube",
+        destination: `${BACKEND_URL}/api/agent/search-youtube`,
+      },
+      {
+        source: "/api/agent/analyze-video",
+        destination: `${BACKEND_URL}/api/agent/analyze-video`,
+      },
+      {
         source: "/api/proxy-image",
         destination: `${BACKEND_URL}/api/proxy-image`,
       },
@@ -15,12 +23,20 @@ const nextConfig: NextConfig = {
         destination: `${BACKEND_URL}/api/topics`,
       },
       {
+        source: "/api/topics/:id/knowledge",
+        destination: `${BACKEND_URL}/api/topics/:id/knowledge`,
+      },
+      {
         source: "/api/topics/:id",
         destination: `${BACKEND_URL}/api/topics/:id`,
       },
       {
         source: "/api/videos",
         destination: `${BACKEND_URL}/api/videos`,
+      },
+      {
+        source: "/api/search/:path*",
+        destination: `${BACKEND_URL}/api/search/:path*`,
       },
       {
         source: "/api/videos/:id",

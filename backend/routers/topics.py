@@ -65,6 +65,25 @@ async def get_topic(topic_id: str):
     return topic
 
 
+@router.get("/topics/{topic_id}/knowledge")
+async def get_topic_knowledge(topic_id: str):
+    """Return all transcripts for a topic — used by chat to dump into context."""
+    topic = await db.get_topic(topic_id)
+    if not topic:
+        raise HTTPException(404, "Topic not found")
+
+    knowledge = await db.get_topic_knowledge(topic_id)
+    total_chars = sum(len(item["text"]) for item in knowledge)
+
+    return {
+        "topicId": topic_id,
+        "topicName": topic["name"],
+        "videoCount": len(knowledge),
+        "totalChars": total_chars,
+        "knowledge": knowledge,
+    }
+
+
 @router.delete("/topics/{topic_id}")
 async def delete_topic(topic_id: str):
     ok = await db.delete_topic(topic_id)
